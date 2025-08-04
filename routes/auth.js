@@ -1,6 +1,5 @@
 import express from 'express';
 import { body, validationResult } from 'express-validator';
-import User from '../models/User.js';
 import { generateToken } from '../middleware/auth.js';
 import jwt from 'jsonwebtoken';
 
@@ -48,9 +47,10 @@ router.post('/signup', signupValidation, async (req, res) => {
     }
 
     const { firstName, lastName, email, password } = req.body;
+    const { User } = req.app.get('models');
 
     // Check if user already exists
-    const existingUser = await User.findOne({ email });
+    const existingUser = await User.findOne({ where: { email } });
     if (existingUser) {
       return res.status(400).json({ 
         error: 'User with this email already exists' 
@@ -58,21 +58,23 @@ router.post('/signup', signupValidation, async (req, res) => {
     }
 
     // Create new user
-    const user = new User({
+    const user = await User.create({
       firstName,
       lastName,
       email,
       password
     });
 
-    await user.save();
-
     // Generate token
-    const token = generateToken(user._id);
+    const token = generateToken(user.id);
+
+    // Remove password from response
+    const userResponse = user.toJSON();
+    delete userResponse.password;
 
     res.status(201).json({
       message: 'User created successfully',
-      user: user.toJSON(),
+      user: userResponse,
       token
     });
 
@@ -97,19 +99,13 @@ router.post('/login', loginValidation, async (req, res) => {
     }
 
     const { email, password } = req.body;
+    const { User } = req.app.get('models');
 
     // Find user by email
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ where: { email } });
     if (!user) {
       return res.status(401).json({ 
         error: 'Invalid email or password' 
-      });
-    }
-
-    // Check if account is active
-    if (user.status !== 'active') {
-      return res.status(403).json({ 
-        error: 'Account is not active' 
       });
     }
 
@@ -126,11 +122,15 @@ router.post('/login', loginValidation, async (req, res) => {
     await user.save();
 
     // Generate token
-    const token = generateToken(user._id);
+    const token = generateToken(user.id);
+
+    // Remove password from response
+    const userResponse = user.toJSON();
+    delete userResponse.password;
 
     res.json({
       message: 'Login successful',
-      user: user.toJSON(),
+      user: userResponse,
       token
     });
 
@@ -154,7 +154,11 @@ router.get('/profile', async (req, res) => {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
-    const user = await User.findById(decoded.userId).select('-password');
+    const { User } = req.app.get('models');
+    
+    const user = await User.findByPk(decoded.userId, {
+      attributes: { exclude: ['password'] }
+    });
     
     if (!user) {
       return res.status(404).json({ 

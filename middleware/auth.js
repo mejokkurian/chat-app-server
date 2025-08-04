@@ -1,5 +1,4 @@
 import jwt from 'jsonwebtoken';
-import User from '../models/User.js';
 
 export const authenticateToken = async (req, res, next) => {
   try {
@@ -14,18 +13,15 @@ export const authenticateToken = async (req, res, next) => {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
     
-    // Get user from database
-    const user = await User.findById(decoded.userId).select('-password');
+    // Get user from database using Sequelize
+    const { User } = req.app.get('models');
+    const user = await User.findByPk(decoded.userId, {
+      attributes: { exclude: ['password'] }
+    });
     
     if (!user) {
       return res.status(401).json({ 
         error: 'Invalid token. User not found.' 
-      });
-    }
-
-    if (user.status !== 'active') {
-      return res.status(403).json({ 
-        error: 'Account is not active.' 
       });
     }
 
