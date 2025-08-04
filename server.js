@@ -83,6 +83,16 @@ const connectDB = async () => {
   try {
     const mongoURI = process.env.MONGODB_URI || 'mongodb://localhost:27017/chat-app';
     console.log('🔗 Connecting to MongoDB...');
+    console.log('📝 Using URI:', mongoURI.replace(/\/\/[^:]+:[^@]+@/, '//***:***@')); // Hide password
+    
+    if (!process.env.MONGODB_URI) {
+      console.log('⚠️  MONGODB_URI environment variable not set!');
+      console.log('📋 Setup instructions:');
+      console.log('1. Go to Railway dashboard → Variables');
+      console.log('2. Add MONGODB_URI with your MongoDB Atlas connection string');
+      console.log('3. Format: mongodb+srv://username:password@cluster.mongodb.net/chat-app');
+      console.log('4. Redeploy your service');
+    }
     
     await mongoose.connect(mongoURI, {
       useNewUrlParser: true,
@@ -96,6 +106,7 @@ const connectDB = async () => {
     console.error('❌ MongoDB connection error:', error);
     console.log('💡 Make sure to set MONGODB_URI environment variable in Railway');
     console.log('💡 You can use MongoDB Atlas (free tier) for cloud database');
+    console.log('📖 See MONGODB_SETUP.md for detailed instructions');
     
     // In production, you might want to exit the process
     if (process.env.NODE_ENV === 'production') {
