@@ -25,6 +25,9 @@ dotenv.config();
 const app = express();
 const server = createServer(app);
 
+// Trust proxy for Railway deployment
+app.set('trust proxy', 1);
+
 // CORS configuration
 const allowedOrigins = [
   // Development
@@ -62,23 +65,48 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
-// Rate limiting
+// Rate limiting with proper configuration for Railway
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100 // limit each IP to 100 requests per windowMs
+  max: 100, // limit each IP to 100 requests per windowMs
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  trustProxy: true // Trust the proxy for Railway
 });
 app.use(limiter);
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Database connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/chat-app', {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
-.then(() => console.log('✅ Connected to MongoDB'))
-.catch(err => console.error('❌ MongoDB connection error:', err));
+// Database connection with better error handling
+const connectDB = async () => {
+  try {
+    const mongoURI = process.env.MONGODB_URI || 'mongodb://localhost:27017/chat-app';
+    console.log('🔗 Connecting to MongoDB...');
+    
+    await mongoose.connect(mongoURI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
+      socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
+    });
+    
+    console.log('✅ Connected to MongoDB successfully');
+  } catch (error) {
+    console.error('❌ MongoDB connection error:', error);
+    console.log('💡 Make sure to set MONGODB_URI environment variable in Railway');
+    console.log('💡 You can use MongoDB Atlas (free tier) for cloud database');
+    
+    // In production, you might want to exit the process
+    if (process.env.NODE_ENV === 'production') {
+      console.log('🔄 Retrying connection in 5 seconds...');
+      setTimeout(connectDB, 5000);
+    }
+  }
+};
+
+// Connect to database
+connectDB();
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -91,7 +119,8 @@ app.get('/api/health', (req, res) => {
   res.json({
     status: 'OK',
     message: 'Chat server is running',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    database: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected'
   });
 });
 
@@ -118,7 +147,6 @@ const PORT = process.env.PORT || 5001;
 
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📡 Socket.IO server ready`);
-  console.log(`🌐 Health check: http://localhost:${PORT}/api/health`);
-  console.log(`🔗 Frontend should connect to: http://localhost:${PORT}`);
+  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🔗 Health check: http://localhost:${PORT}/api/health`);
 }); 
