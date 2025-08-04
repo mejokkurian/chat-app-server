@@ -5,7 +5,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
-import mongoose from 'mongoose';
+import { Sequelize } from 'sequelize';
 
 // Import routes
 import authRoutes from './routes/auth.js';
@@ -18,6 +18,9 @@ import { authenticateToken } from './middleware/auth.js';
 
 // Import socket handlers
 import { handleSocketConnection } from './socket/socketHandler.js';
+
+// Import models
+import initializeModels from './models/index.js';
 
 // Load environment variables
 dotenv.config();
@@ -78,35 +81,51 @@ app.use(limiter);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Database connection with better error handling
+// Database connection with PostgreSQL
+let sequelize;
+let models;
 const connectDB = async () => {
   try {
-    const mongoURI = process.env.MONGODB_URI || 'mongodb://localhost:27017/chat-app';
-    console.log('🔗 Connecting to MongoDB...');
-    console.log('📝 Using URI:', mongoURI.replace(/\/\/[^:]+:[^@]+@/, '//***:***@')); // Hide password
+    const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL || 'postgresql://localhost:5432/chat-app';
+    console.log('🔗 Connecting to PostgreSQL...');
+    console.log('📝 Using URL:', databaseUrl.replace(/\/\/[^:]+:[^@]+@/, '//***:***@')); // Hide password
     
-    if (!process.env.MONGODB_URI) {
-      console.log('⚠️  MONGODB_URI environment variable not set!');
+    if (!process.env.DATABASE_URL && !process.env.POSTGRES_URL) {
+      console.log('⚠️  DATABASE_URL environment variable not set!');
       console.log('📋 Setup instructions:');
-      console.log('1. Go to Railway dashboard → Variables');
-      console.log('2. Add MONGODB_URI with your MongoDB Atlas connection string');
-      console.log('3. Format: mongodb+srv://username:password@cluster.mongodb.net/chat-app');
+      console.log('1. Go to Railway dashboard → Add PostgreSQL service');
+      console.log('2. Copy the DATABASE_URL from PostgreSQL service');
+      console.log('3. Add DATABASE_URL to your main service variables');
       console.log('4. Redeploy your service');
     }
     
-    await mongoose.connect(mongoURI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-      serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
-      socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
+    sequelize = new Sequelize(databaseUrl, {
+      dialect: 'postgres',
+      logging: false, // Disable SQL logging in production
+      pool: {
+        max: 5,
+        min: 0,
+        acquire: 30000,
+        idle: 10000
+      }
     });
     
-    console.log('✅ Connected to MongoDB successfully');
+    // Test the connection
+    await sequelize.authenticate();
+    console.log('✅ Connected to PostgreSQL successfully');
+    
+    // Initialize models
+    models = initializeModels(sequelize);
+    console.log('✅ Models initialized');
+    
+    // Sync models (create tables if they don't exist)
+    await sequelize.sync({ alter: true });
+    console.log('✅ Database tables synchronized');
+    
   } catch (error) {
-    console.error('❌ MongoDB connection error:', error);
-    console.log('💡 Make sure to set MONGODB_URI environment variable in Railway');
-    console.log('💡 You can use MongoDB Atlas (free tier) for cloud database');
-    console.log('📖 See MONGODB_SETUP.md for detailed instructions');
+    console.error('❌ PostgreSQL connection error:', error);
+    console.log('💡 Make sure to set DATABASE_URL environment variable in Railway');
+    console.log('💡 Add a PostgreSQL service to your Railway project');
     
     // In production, you might want to exit the process
     if (process.env.NODE_ENV === 'production') {
@@ -118,6 +137,10 @@ const connectDB = async () => {
 
 // Connect to database
 connectDB();
+
+// Make sequelize and models available to routes
+app.set('sequelize', sequelize);
+app.set('models', models);
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -131,7 +154,7 @@ app.get('/api/health', (req, res) => {
     status: 'OK',
     message: 'Chat server is running',
     timestamp: new Date().toISOString(),
-    database: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected'
+    database: sequelize && sequelize.authenticate ? 'Connected' : 'Disconnected'
   });
 });
 

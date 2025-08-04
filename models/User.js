@@ -1,158 +1,93 @@
-import mongoose from 'mongoose';
+import { DataTypes } from 'sequelize';
 import bcrypt from 'bcryptjs';
 
-const userSchema = new mongoose.Schema({
-  firstName: {
-    type: String,
-    required: true,
-    trim: true
-  },
-  lastName: {
-    type: String,
-    required: true,
-    trim: true
-  },
-  email: {
-    type: String,
-    required: true,
-    unique: true,
-    lowercase: true,
-    trim: true
-  },
-  password: {
-    type: String,
-    required: true,
-    minlength: 6
-  },
-  avatar: {
-    type: String,
-    default: null
-  },
-  bio: {
-    type: String,
-    maxlength: 500,
-    default: ''
-  },
-  isOnline: {
-    type: Boolean,
-    default: false
-  },
-  lastSeen: {
-    type: Date,
-    default: Date.now
-  },
-  status: {
-    type: String,
-    enum: ['active', 'away', 'busy', 'offline'],
-    default: 'active'
-  },
-  socketId: {
-    type: String,
-    default: null
-  },
-  // Friend request system
-  followers: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
-  }],
-  following: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
-  }],
-  friendRequests: [{
-    from: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
+const User = (sequelize) => {
+  const UserModel = sequelize.define('User', {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true
     },
-    status: {
-      type: String,
-      enum: ['pending', 'accepted', 'rejected'],
-      default: 'pending'
+    firstName: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      validate: {
+        len: [2, 50]
+      }
     },
-    createdAt: {
-      type: Date,
-      default: Date.now
+    lastName: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      validate: {
+        len: [2, 50]
+      }
+    },
+    email: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      unique: true,
+      validate: {
+        isEmail: true
+      }
+    },
+    password: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      validate: {
+        len: [6, 100]
+      }
+    },
+    profilePicture: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+    isOnline: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false
+    },
+    lastSeen: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW
+    },
+    socketId: {
+      type: DataTypes.STRING,
+      allowNull: true
     }
-  }],
-  // Privacy settings
-  isPrivate: {
-    type: Boolean,
-    default: false
-  },
-  allowFriendRequests: {
-    type: Boolean,
-    default: true
-  }
-}, {
-  timestamps: true
-});
+  }, {
+    tableName: 'users',
+    timestamps: true,
+    hooks: {
+      beforeCreate: async (user) => {
+        if (user.password) {
+          const salt = await bcrypt.genSalt(10);
+          user.password = await bcrypt.hash(user.password, salt);
+        }
+      },
+      beforeUpdate: async (user) => {
+        if (user.changed('password')) {
+          const salt = await bcrypt.genSalt(10);
+          user.password = await bcrypt.hash(user.password, salt);
+        }
+      }
+    }
+  });
 
-// Index for better query performance
-userSchema.index({ email: 1 });
-userSchema.index({ isOnline: 1 });
-userSchema.index({ createdAt: -1 });
-
-// Hash password before saving
-userSchema.pre('save', async function(next) {
-  if (!this.isModified('password')) return next();
-  
-  try {
-    const salt = await bcrypt.genSalt(10);
-    this.password = await bcrypt.hash(this.password, salt);
-    next();
-  } catch (error) {
-    next(error);
-  }
-});
-
-// Compare password method
-userSchema.methods.comparePassword = async function(candidatePassword) {
-  return bcrypt.compare(candidatePassword, this.password);
-};
-
-// Get public profile (without sensitive data)
-userSchema.methods.getPublicProfile = function() {
-  return {
-    _id: this._id,
-    firstName: this.firstName,
-    lastName: this.lastName,
-    email: this.email,
-    avatar: this.avatar,
-    bio: this.bio,
-    isOnline: this.isOnline,
-    lastSeen: this.lastSeen,
-    status: this.status,
-    followers: this.followers.length,
-    following: this.following.length,
-    isPrivate: this.isPrivate,
-    allowFriendRequests: this.allowFriendRequests,
-    createdAt: this.createdAt
+  // Instance method to compare password
+  UserModel.prototype.comparePassword = async function(candidatePassword) {
+    return await bcrypt.compare(candidatePassword, this.password);
   };
-};
 
-// Check if user is friends with another user
-userSchema.methods.isFriendsWith = function(userId) {
-  const followers = this.followers || [];
-  const following = this.following || [];
-  return following.includes(userId) && followers.includes(userId);
-};
+  // Instance method to get full name
+  UserModel.prototype.getFullName = function() {
+    return `${this.firstName} ${this.lastName}`;
+  };
 
-// Check if friend request exists (received from another user)
-userSchema.methods.hasFriendRequest = function(fromUserId) {
-  const friendRequests = this.friendRequests || [];
-  return friendRequests.some(request => 
-    request.from.equals(fromUserId) && request.status === 'pending'
-  );
-};
+  // Instance method to get initials
+  UserModel.prototype.getInitials = function() {
+    return `${this.firstName.charAt(0)}${this.lastName.charAt(0)}`.toUpperCase();
+  };
 
-// Check if user has sent friend request to another user
-userSchema.methods.hasSentFriendRequest = function(toUserId) {
-  // This method should check if the current user has sent a request to toUserId
-  // We need to check the target user's friendRequests array
-  // This is a limitation of the current schema - we should track sent requests
-  return false; // This will be handled in the route logic
+  return UserModel;
 };
-
-const User = mongoose.model('User', userSchema);
 
 export default User; 
