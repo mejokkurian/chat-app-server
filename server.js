@@ -90,6 +90,12 @@ const connectDB = async () => {
     console.log('🔗 Connecting to PostgreSQL...');
     console.log('📝 Using URL:', databaseUrl.replace(/\/\/[^:]+:[^@]+@/, '//***:***@')); // Hide password
     
+    // Debug environment variables
+    console.log('🔍 Environment variables:');
+    console.log('DATABASE_URL:', process.env.DATABASE_URL ? 'SET' : 'NOT SET');
+    console.log('POSTGRES_URL:', process.env.POSTGRES_URL ? 'SET' : 'NOT SET');
+    console.log('NODE_ENV:', process.env.NODE_ENV || 'development');
+    
     if (!process.env.DATABASE_URL && !process.env.POSTGRES_URL) {
       console.log('⚠️  DATABASE_URL environment variable not set!');
       console.log('📋 Setup instructions:');
@@ -97,6 +103,8 @@ const connectDB = async () => {
       console.log('2. Copy the DATABASE_URL from PostgreSQL service');
       console.log('3. Add DATABASE_URL to your main service variables');
       console.log('4. Redeploy your service');
+      console.log('💡 Your connection string should be:');
+      console.log('postgresql://postgres:xNFsAZWnsueAPYivCuSvwvmJoXtkJLbD@postgres.railway.internal:5432/railway');
     }
     
     sequelize = new Sequelize(databaseUrl, {
@@ -126,6 +134,9 @@ const connectDB = async () => {
     console.error('❌ PostgreSQL connection error:', error);
     console.log('💡 Make sure to set DATABASE_URL environment variable in Railway');
     console.log('💡 Add a PostgreSQL service to your Railway project');
+    console.log('🔍 Debug info:');
+    console.log('- DATABASE_URL:', process.env.DATABASE_URL ? 'SET' : 'NOT SET');
+    console.log('- POSTGRES_URL:', process.env.POSTGRES_URL ? 'SET' : 'NOT SET');
     
     // In production, you might want to exit the process
     if (process.env.NODE_ENV === 'production') {
