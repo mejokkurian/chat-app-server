@@ -24,10 +24,27 @@ dotenv.config();
 
 const app = express();
 const server = createServer(app);
+
+// CORS configuration
+const allowedOrigins = [
+  // Development
+  "http://localhost:3000",
+  "http://localhost:3001", 
+  "http://localhost:3002",
+  "http://localhost:3003",
+  "http://localhost:5173",
+  // Production - Vercel domains
+  "https://chat-app-*.vercel.app",
+  "https://*.vercel.app",
+  // Add your specific Vercel domain here once deployed
+  "https://chat-app-mejokkurian.vercel.app",
+  "https://chat-app-git-main-mejokkurian.vercel.app"
+];
+
 // Socket.IO setup
 const io = new Server(server, {
   cors: {
-    origin: ["http://localhost:3000", "http://localhost:3001", "http://localhost:3002", "http://localhost:3003", "http://localhost:5173"],
+    origin: true, // Allow all origins for Socket.IO
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true
   }
@@ -39,8 +56,10 @@ app.set('io', io);
 // Middleware
 app.use(helmet());
 app.use(cors({
-  origin: ["http://localhost:3000", "http://localhost:3001", "http://localhost:3002", "http://localhost:3003"],
-  credentials: true
+  origin: true, // Allow all origins for now
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
 // Rate limiting
@@ -69,8 +88,8 @@ app.use('/api/notifications', authenticateToken, notificationRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
+  res.json({
+    status: 'OK',
     message: 'Chat server is running',
     timestamp: new Date().toISOString()
   });
@@ -84,7 +103,7 @@ io.on('connection', (socket) => {
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  res.status(500).json({ 
+  res.status(500).json({
     error: 'Something went wrong!',
     message: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'
   });
